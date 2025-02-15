@@ -23,7 +23,7 @@ from sklearn.ensemble import (
     GradientBoostingClassifier,
     RandomForestClassifier,
 )
-# import mlflow
+import mlflow
 # from urllib.parse import urlparse
 
 # import dagshub
@@ -35,6 +35,18 @@ class ModelTrainer:
             self.data_transformation_artifact=data_transformation_artifact
         except Exception as e:
             raise NetworkSecurityException(e,sys)
+        
+    def track_mlflow(self,best_model,classification_metric):
+        with mlflow.start_run():
+            f1_score = classification_metric.f1_score
+            precision_score = classification_metric.precision_score
+            recall_score = classification_metric.recall_score
+            
+            mlflow.log_metric("f1_score",f1_score)
+            mlflow.log_metric("precision_score",precision_score)
+            mlflow.log_metric("recall_score",recall_score)
+            mlflow.sklearn.log_model(best_model,"model")
+            
         
         
     def train_model(self,X_train,y_train,X_test,y_test):
@@ -74,28 +86,31 @@ class ModelTrainer:
         }
         model_report:dict=evaluate_models(X_train=X_train,y_train=y_train,X_test=X_test,y_test=y_test,
                                           models=models,param=params)
-        print("Andar wala func 1")
+
         best_model_score = max(sorted(model_report.values()))
         
         best_model_name = list(model_report.keys())[list(model_report.values()).index(best_model_score)]
         
         best_model = models[best_model_name]
-        print("Andar wala func 2")
+
         y_train_predict = best_model.predict(X_train)
         classification_train_metric = get_classification_score(y_true=y_train,y_pred=y_train_predict)
+        
+        self.track_mlflow(best_model,classification_train_metric)
         
         y_test_pred = best_model.predict(X_test)
         classification_test_metric = get_classification_score(y_true=y_test,y_pred=y_test_pred)
         
+        self.track_mlflow(best_model,classification_test_metric)
+        
         preprocessor = load_object(file_path=self.data_transformation_artifact.transformed_object_file_path)
-        print("Andar wala func 3")   
+ 
         model_dir_path = os.path.dirname(self.model_trainer_config.trained_model_file_path)
         os.makedirs(model_dir_path,exist_ok=True)
         
         Network_Model = NetworkModel(model=best_model,preprocessor=preprocessor)
         save_object(self.model_trainer_config.trained_model_file_path,obj=Network_Model)
-        
-        print("Andar wala func 4")
+
         model_trainer_artifact = ModelTrainerArtifact(trained_model_file_path=self.model_trainer_config.trained_model_file_path,
                              train_metric_artifact=classification_train_metric,
                              test_metric_artifact=classification_test_metric,
@@ -110,11 +125,10 @@ class ModelTrainer:
         try:
             train_file_path = self.data_transformation_artifact.transformed_train_file_path
             test_file_path = self.data_transformation_artifact.transformed_test_file_path
-            
-            print("Worked Tilll here part 1")
+          
             train_arr = load_numpy_array_data(train_file_path)
             test_arr = load_numpy_array_data(test_file_path)
-            print("Worked Tilll here part 2")
+        
             x_train, y_train, x_test, y_test = (
                 train_arr[:, :-1],
                 train_arr[:, -1],
